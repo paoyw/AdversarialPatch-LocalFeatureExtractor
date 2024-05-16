@@ -11,4 +11,16 @@ pip intsall -r requirements.txt
 
 ## Folder structure
 ```
+.
+├── data
+│   └── hpatches-sequences-release/
+├── eval
+│   ├── __init__.py
+│   └── utils.py
+├── models
+│   ├── __init__.py
+│   ├── superpoint.py
+│   └── superpoint_v1.pth
+├── README.md
+└── requirements.txt
 ```
