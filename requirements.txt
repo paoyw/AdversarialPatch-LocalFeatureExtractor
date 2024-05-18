@@ -1,2 +1,5 @@
 torch
+torchvision
 opencv-python
+scipy
+matplotlib
