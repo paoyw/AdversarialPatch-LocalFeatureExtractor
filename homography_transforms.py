@@ -1,7 +1,7 @@
 import torch
 
 
-def point_transform(H: torch.Tensor, points: torch.Tensor):
+def point_transform(H: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
     """
     Homography transform on a list of points based on the transformation matrix.
 
@@ -15,4 +15,5 @@ def point_transform(H: torch.Tensor, points: torch.Tensor):
     batch_size = points.shape[0]
     if points.shape[1] == 2:
         points = torch.hstack((points, torch.ones(batch_size, 1)))
-    return (H @ points.T).T
+    result = (H @ points.T).T
+    return result[:, :2] / result[:, -1:]
