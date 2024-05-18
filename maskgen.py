@@ -9,14 +9,14 @@ import torch
 import homography_transforms as htfm
 
 
-def readHomography(f: str) -> list:
+def readHomography(f: str) -> list[list[float]]:
     """Reads the homography matrix from a file."""
     with open(f, 'r') as f:
         H = list(map(lambda x: list(map(float, x.split())), f.readlines()))
     return H
 
 
-def generate_rect(w, h, patch_w, patch_h, method='center') -> list:
+def generate_rect(w, h, patch_w, patch_h, method='center') -> list[list[int]]:
     """
     Generates a list of positions of the points.
 
@@ -45,11 +45,57 @@ def generate_rect(w, h, patch_w, patch_h, method='center') -> list:
             [x, y + patch_h]]
 
 
+def is_overlapping(rect0: torch.Tensor, rect1: torch.Tensor) -> bool:
+    """
+    Checks if two rectangles are overlapped with each other.
+
+    Args:
+        rect0: The position of each point of a rectangles with order.
+        rect1: The position of each point of a rectangles with order.
+
+    Returns:
+        If two rectangels are overlapped.
+    """
+    for p in rect1:
+        if p[0] >= rect0[0][0] and p[0] <= rect0[2][0] and \
+                p[1] >= rect0[0][1] and p[1] <= rect0[2][1]:
+            return True
+    return False
+
+
+def minimum_movement(rect0: torch.Tensor, rect1: torch.Tensor) -> list[int]:
+    """
+    Compute the minimum Manhaton distance to move one rectangle, so that two
+    rectangles is not overlapped.
+
+    Args:
+        rect0: The position of each point of a rectangles with order.
+        rect1: The position of each point of a rectangles to be moved with order.
+
+    Returns:
+        [x, y], the vector of the movements.
+    """
+    if is_overlapping(rect0, rect1):
+        if abs(rect0[2][0] + 1 - rect1[0][0]) < abs(rect0[1][0] - 1 - rect1[2][0]):
+            x = rect0[2][0] + 1 - rect1[0][0]
+        else:
+            x = rect0[1][0] - 1 - rect1[2][0]
+        
+        if abs(rect0[2][1] + 1 - rect1[0][1]) < abs(rect0[1][1] - 1 - rect1[2][1]):
+            y = rect0[2][1] + 1 - rect1[0][1]
+        else:
+            y = rect0[1][1] - 1 - rect1[2][1]
+        return [x, y]
+    else:
+        return [0, 0]
+
+
 def generate_mask(dir: str,
                   patch_width: int | float,
                   patch_height: int | float,
                   H: list | None = None,
-                  individual: bool = False) -> None:
+                  individual: bool = False,
+                  overlapping: bool = False,) -> None:
     """
     Generates the mask of the adversarial patch for each picture in the directory.
 
@@ -64,6 +110,8 @@ def generate_mask(dir: str,
             The default value is `None`.
         individual: Uses the homography transformation for each picture. The
                     default value is `False`.
+        overlapping: Enable overlapping between two patches. The default value
+                     is `False`.
 
     Returns:
         `None`
@@ -97,6 +145,17 @@ def generate_mask(dir: str,
         for _H, source_patch in zip(Hs, source_patches)
     ]
 
+    if not overlapping:
+        for i, (source_patch, target_patch) \
+                in enumerate(zip(source_patches, target_patches)):
+            source_patch = torch.Tensor(source_patch)
+            target_patch = torch.Tensor(target_patch)
+            if is_overlapping(source_patch, target_patch):
+                x, y = minimum_movement(source_patch, target_patch)
+                target_patch[:, 0] += x
+                target_patch[:, 1] += y
+                target_patches[i] = target_patch.tolist()
+
     for i, _H, source_patch, target_patch in \
             zip(range(2, 7), Hs, source_patches, target_patches):
         result.append({
@@ -117,10 +176,10 @@ def main(args):
     if args.dirs:
         for dir in args.dirs:
             generate_mask(dir, args.patch_width, args.patch_height,
-                          args.H, args.individual)
+                          args.H, args.individual, args.overlapping)
     else:
         generate_mask(args.dir, args.patch_width, args.patch_height,
-                      args.H, args.individual)
+                      args.H, args.individual, args.overlapping)
 
 
 if __name__ == '__main__':
@@ -132,5 +191,6 @@ if __name__ == '__main__':
     parser.add_argument('--patch-height', default=128, type=eval)
     parser.add_argument('--H')
     parser.add_argument('--individual', action='store_true')
+    parser.add_argument('--overlapping', action='store_true')
 
     main(parser.parse_args())
