@@ -9,9 +9,9 @@ import torch
 import homography_transforms as htfm
 
 
-def readHomography(f: str) -> list[list[float]]:
+def readHomography(fname: str) -> list[list[float]]:
     """Reads the homography matrix from a file."""
-    with open(f, 'r') as f:
+    with open(fname, 'r') as f:
         H = list(map(lambda x: list(map(float, x.split())), f.readlines()))
     return H
 
@@ -85,7 +85,7 @@ def minimum_movement(rect0: torch.Tensor, rect1: torch.Tensor) -> list[int]:
             y = rect0[2][1] + 1 - rect1[0][1]
         else:
             y = rect0[1][1] - 1 - rect1[2][1]
-        return [x, y]
+        return [int(x), int(y)]
     else:
         return [0, 0]
 

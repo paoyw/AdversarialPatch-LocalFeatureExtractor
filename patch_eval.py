@@ -1,10 +1,15 @@
 from argparse import ArgumentParser
 import itertools
+import json
+import os
+from typing import Any
 
 import numpy as np
 import cv2
 import torch
 from scipy.spatial import ConvexHull, Delaunay
+
+from models.superpoint import SuperPointNet
 
 
 def in_convex_hull(point, hull: ConvexHull) -> bool:
@@ -40,7 +45,7 @@ def fill_patch(img: torch.Tensor,
                patch: torch.Tensor,
                mask: torch.Tensor) -> torch.Tensor:
     """
-    Fill the image with the patch according the position of the mask.
+    Fills the image with the patch according the position of the mask.
 
     Args:
         img: The image to be filled. The shape is [C, H, W].
@@ -86,8 +91,43 @@ def fill_patch(img: torch.Tensor,
     return img
 
 
-def eval():
-    pass
+def instance_eval(source_view: torch.Tensor,
+                  source_mask: torch.Tensor,
+                  target_view: torch.Tensor,
+                  target_mask: torch.Tensor,
+                  model: Any, device: str = 'cpu',
+                  matrics: dict = {}) -> dict:
+    """
+    Evaluates an instance of an adversarial patch attack for the local feature extractor.
+
+    Args:
+        source_view: The image from the source view.
+        source_mask: The source mask in the `source_view` image.
+        target_view: The image from the target view.
+        target_mask: The target mask in the `target_view` image.
+        model: The targeted local feature extractor.
+        device: The computational device.
+
+    Returns:
+        A dictionary of different metrics.
+    """
+
+
+def dir_eval(dir: str, mask_file: str, model: Any, device: str = 'cpu'):
+    """
+    Evaluates every instance with `instance_eval` in a directory.
+
+    Args:
+        dir: The directory to be evaluated.
+        mask_file: The masking file.
+        model: The targeted local feature extractor.
+        device: The computational device.
+
+    Returns:
+        A dictionary of different metrics.
+    """
+    with open(os.path.join(dir, mask_file)) as f:
+        mask_datas = json.load(f)
 
 
 def main(args):
