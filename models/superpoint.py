@@ -43,6 +43,7 @@
 # --------------------------------------------------------------------*/
 # %BANNER_END%
 
+import cv2
 import torch
 
 
@@ -112,3 +113,25 @@ class SuperPointNet(torch.nn.Module):
         dn = torch.norm(desc, p=2, dim=1)  # Compute the norm.
         desc = desc.div(torch.unsqueeze(dn, 1))  # Divide by norm to normalize.
         return semi, desc
+
+    def to_cv2(self, semi, desc):
+        """
+        Converts the output of the model to the format of the cv2 input.
+        Args:
+            semi: The heatmap of the model output. The shape is 65 x H/8 x W/8.
+            desc: The key point descriptors of the model output. The shape is 256 x H/8 x W/8.
+
+        Returns:
+            keypoint: The positions of the key points.
+            desc: The descriptors of the key points.
+        """
+        logit = semi.argmax(dim=0)
+        _pt_y, _pt_x = torch.where(logit != 64)
+        pt_x = 8 * _pt_x + logit[_pt_y, _pt_x] % 8
+        pt_y = 8 * _pt_y + logit[_pt_y, _pt_x] // 8
+        result_kp = []
+        result_desc = []
+        for x, y in zip(pt_x, pt_y):
+            result_kp.append(cv2.KeyPoint(x, y, 1))
+            result_desc.append(desc[:, y // 8, x // 8].cpu.numpy())
+        return result_kp, result_desc
