@@ -45,7 +45,7 @@
 
 import cv2
 import torch
-
+import numpy as np
 
 class SuperPointNet(torch.nn.Module):
     """ Pytorch definition of SuperPoint Network. """
@@ -132,6 +132,6 @@ class SuperPointNet(torch.nn.Module):
         result_kp = []
         result_desc = []
         for x, y in zip(pt_x, pt_y):
-            result_kp.append(cv2.KeyPoint(x, y, 1))
-            result_desc.append(desc[:, y // 8, x // 8].cpu.numpy())
-        return result_kp, result_desc
+            result_kp.append(cv2.KeyPoint(x.cpu().item(), y.cpu().item(), 1))
+            result_desc.append(desc[:, y // 8, x // 8].cpu().tolist())
+        return np.array(result_kp), np.array(result_desc, dtype=np.float32)

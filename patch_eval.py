@@ -7,8 +7,10 @@ from typing import Any
 import numpy as np
 import cv2
 import torch
+from torchvision.transforms import v2
 from scipy.spatial import ConvexHull, Delaunay
 
+import homography_transforms as htfm
 from models.superpoint import SuperPointNet
 
 
@@ -95,8 +97,7 @@ def instance_eval(source_view: torch.Tensor,
                   source_mask: torch.Tensor,
                   target_view: torch.Tensor,
                   target_mask: torch.Tensor,
-                  model: Any, device: str = 'cpu',
-                  matrics: dict = {}) -> dict:
+                  model: Any, device: str = 'cpu') -> dict:
     """
     Evaluates an instance of an adversarial patch attack for the local feature extractor.
 
@@ -109,30 +110,144 @@ def instance_eval(source_view: torch.Tensor,
         device: The computational device.
 
     Returns:
-        A dictionary of different metrics.
+        mismatch_rate: The matching ratio from the source mask in the source
+        image to the target mask in the target image.
     """
+    source_view = source_view.to(device).unsqueeze(dim=0)
+    target_view = target_view.to(device).unsqueeze(dim=0)
+    model = model.to(device)
+    model.eval()
+
+    with torch.no_grad():
+        source_view_semi, source_view_desc = model(
+            v2.functional.rgb_to_grayscale(source_view))
+        target_view_semi, target_view_desc = model(
+            v2.functional.rgb_to_grayscale(target_view))
+    source_view_pt, source_view_desc = model.to_cv2(
+        source_view_semi.squeeze(), source_view_desc.squeeze()
+    )
+    target_view_pt, target_view_desc = model.to_cv2(
+        target_view_semi.squeeze(), target_view_desc.squeeze()
+    )
+    matcher = cv2.BFMatcher()
+    matches = matcher.knnMatch(source_view_desc, target_view_desc, k=2)
+    matches = sorted(matches,
+                     key=lambda m: np.abs(m[0].distance - m[1].distance))
+    matches = matches[:1000]
+    count = 0
+    total = 0
+    for m, n in matches:
+        if in_convex_hull(source_view_pt[m.queryIdx].pt, ConvexHull(source_mask)):
+            total += 1
+            if in_convex_hull(target_view_pt[m.trainIdx].pt, ConvexHull(target_mask)):
+                count += 1
+    mismatch_rate = count / total
+    return mismatch_rate
 
 
-def dir_eval(dir: str, mask_file: str, model: Any, device: str = 'cpu'):
+def dir_eval(dir: str, mask_file: str, patch_file: str,
+             model: Any, device: str = 'cpu'):
     """
     Evaluates every instance with `instance_eval` in a directory.
 
     Args:
         dir: The directory to be evaluated.
         mask_file: The masking file.
+        patch_file: The file of the adversarial patch.
         model: The targeted local feature extractor.
         device: The computational device.
 
     Returns:
-        A dictionary of different metrics.
+        mismatch_rate: The matching ratio from the source mask in the source
+        image to the target mask in the target image.
     """
     with open(os.path.join(dir, mask_file)) as f:
         mask_datas = json.load(f)
 
+    patch = v2.functional.to_image(
+        cv2.imread(patch_file, cv2.IMREAD_GRAYSCALE))
+    patch = v2.functional.to_dtype(patch, dtype=torch.float32, scale=True)
+
+    mismtach_rates = []
+    for mask_data in mask_datas:
+        H = torch.Tensor(mask_data['H'])
+        source_view_source_mask = torch.Tensor(mask_data['source_patch'])
+        source_view_target_mask = torch.Tensor(mask_data['target_patch'])
+        target_view_source_mask = htfm.point_transform(
+            H, source_view_source_mask)
+        target_view_target_mask = htfm.point_transform(
+            H, source_view_target_mask)
+
+        source_view = v2.functional.to_image(
+            cv2.imread(os.path.join(dir, mask_data['source_view'])))
+        source_view = v2.functional.to_dtype(
+            source_view, dtype=torch.float32, scale=True)
+        source_view = fill_patch(source_view, patch, source_view_source_mask)
+        source_view = fill_patch(source_view, patch, source_view_target_mask)
+
+        target_view = v2.functional.to_image(
+            cv2.imread(os.path.join(dir, mask_data['target_view'])))
+        target_view = v2.functional.to_dtype(
+            target_view, dtype=torch.float32, scale=True)
+        target_view = fill_patch(target_view, patch, target_view_source_mask)
+        target_view = fill_patch(target_view, patch, target_view_target_mask)
+
+        mismtach_rate = instance_eval(source_view, source_view_source_mask,
+                                      target_view, target_view_target_mask,
+                                      model, device)
+        mismtach_rates.append(mismtach_rate)
+    return np.mean(mismtach_rates)
+
+
+def dirs_eval(dirs: list[str], mask_file: str, patch_file: str, model: Any, device: str = 'cpu'):
+    """
+    Evaluates every instance with `instance_eval` in a list of directory.
+
+    Args:
+        dirs: A list of the directories to be evaluated.
+        mask_file: The masking file.
+        patch_file: The file of the adversarial patch.
+        model: The targeted local feature extractor.
+        device: The computational device.
+        matrics: A list of metric to evaluate.
+
+    Returns:
+        mismatch_rate: The matching ratio from the source mask in the source
+        image to the target mask in the target image.
+    """
+    mismatch_rates = []
+    for dir in dirs:
+        mismatch_rates.append(dir_eval(dir, mask_file, patch_file,
+                                       model, device))
+    return np.mean(mismatch_rates)
+
 
 def main(args):
-    pass
+    if args.model == 'superpoint':
+        model = SuperPointNet()
+        state_dict = torch.load('models/superpoint_v1.pth')
+        model.load_state_dict(state_dict)
+    else:
+        raise NotImplementedError
+
+    if args.dirs:
+        mismatch_rate = dirs_eval(args.dirs, args.mask_file,
+                                  args.patch_file, model, args.device)
+    else:
+        mismatch_rate = dir_eval(args.dir, args.mask_file,
+                                 args.patch_file, model, args.device)
+    print(f'Mismatch-rate: {mismatch_rate}')
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
+
+    parser.add_argument('--dirs', nargs='*')
+    parser.add_argument('--dir')
+    parser.add_argument('--mask-file', default='mask.json')
+    parser.add_argument('--patch-file', default='patch.png')
+    parser.add_argument('--model', default='superpoint')
+    parser.add_argument('--model-weight', default='models/superpoint_v1.pth')
+    parser.add_argument('--device', default='cpu')
+
+    main(parser.parse_args())
