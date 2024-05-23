@@ -9,6 +9,7 @@ import cv2
 import torch
 from torchvision.transforms import v2
 from scipy.spatial import ConvexHull, Delaunay
+from tqdm import tqdm
 
 import homography_transforms as htfm
 from models.superpoint import SuperPointNet
@@ -94,24 +95,27 @@ def fill_patch(img: torch.Tensor,
 
 
 def instance_eval(source_view: torch.Tensor,
-                  source_mask: torch.Tensor,
+                  source_view_source_mask: torch.Tensor,
+                  source_view_target_mask: torch.Tensor,
                   target_view: torch.Tensor,
-                  target_mask: torch.Tensor,
+                  target_view_source_mask: torch.Tensor,
+                  target_view_target_mask: torch.Tensor,
                   model: Any, device: str = 'cpu') -> dict:
     """
     Evaluates an instance of an adversarial patch attack for the local feature extractor.
 
     Args:
         source_view: The image from the source view.
-        source_mask: The source mask in the `source_view` image.
+        source_view_source_mask: The source mask in the `source_view` image.
+        source_view_target_mask: The target mask in the `source_view` image.
         target_view: The image from the target view.
-        target_mask: The target mask in the `target_view` image.
+        target_view_source_mask: The source mask in the `target_view` image.
+        target_view_target_mask: The target mask in the `target_view` image.
         model: The targeted local feature extractor.
         device: The computational device.
 
     Returns:
-        mismatch_rate: The matching ratio from the source mask in the source
-        image to the target mask in the target image.
+        result: A dictionary of the result.
     """
     source_view = source_view.to(device).unsqueeze(dim=0)
     target_view = target_view.to(device).unsqueeze(dim=0)
@@ -134,19 +138,26 @@ def instance_eval(source_view: torch.Tensor,
     matches = sorted(matches,
                      key=lambda m: np.abs(m[0].distance - m[1].distance))
     matches = matches[:1000]
-    count = 0
+
     total = 0
+    t_count = 0
+    f_count = 0
     for m, n in matches:
-        if in_convex_hull(source_view_pt[m.queryIdx].pt, ConvexHull(source_mask)):
+        if in_convex_hull(source_view_pt[m.queryIdx].pt, ConvexHull(source_view_source_mask)):
             total += 1
-            if in_convex_hull(target_view_pt[m.trainIdx].pt, ConvexHull(target_mask)):
-                count += 1
-    mismatch_rate = count / total
-    return mismatch_rate
+            if in_convex_hull(target_view_pt[m.trainIdx].pt, ConvexHull(target_view_source_mask)):
+                t_count += 1
+            if in_convex_hull(target_view_pt[m.trainIdx].pt, ConvexHull(target_view_target_mask)):
+                f_count += 1
+    results = {'total point': len(matches),
+               'source points ratio': total / len(matches),
+               'TP': t_count / total,
+               'FP': f_count / total}
+    return results
 
 
 def dir_eval(dir: str, mask_file: str, patch_file: str,
-             model: Any, device: str = 'cpu'):
+             model: Any, device: str = 'cpu') -> dict:
     """
     Evaluates every instance with `instance_eval` in a directory.
 
@@ -158,8 +169,7 @@ def dir_eval(dir: str, mask_file: str, patch_file: str,
         device: The computational device.
 
     Returns:
-        mismatch_rate: The matching ratio from the source mask in the source
-        image to the target mask in the target image.
+        results: A dictionary of the result.
     """
     with open(os.path.join(dir, mask_file)) as f:
         mask_datas = json.load(f)
@@ -168,7 +178,7 @@ def dir_eval(dir: str, mask_file: str, patch_file: str,
         cv2.imread(patch_file, cv2.IMREAD_GRAYSCALE))
     patch = v2.functional.to_dtype(patch, dtype=torch.float32, scale=True)
 
-    mismtach_rates = []
+    results = {}
     for mask_data in mask_datas:
         H = torch.Tensor(mask_data['H'])
         source_view_source_mask = torch.Tensor(mask_data['source_patch'])
@@ -192,14 +202,25 @@ def dir_eval(dir: str, mask_file: str, patch_file: str,
         target_view = fill_patch(target_view, patch, target_view_source_mask)
         target_view = fill_patch(target_view, patch, target_view_target_mask)
 
-        mismtach_rate = instance_eval(source_view, source_view_source_mask,
-                                      target_view, target_view_target_mask,
-                                      model, device)
-        mismtach_rates.append(mismtach_rate)
-    return np.mean(mismtach_rates)
+        result = instance_eval(source_view=source_view,
+                               source_view_source_mask=source_view_source_mask,
+                               source_view_target_mask=source_view_target_mask,
+                               target_view=target_view,
+                               target_view_source_mask=target_view_source_mask,
+                               target_view_target_mask=target_view_target_mask,
+                               model=model, device=device)
+        for k, v in result.items():
+            if k not in results:
+                results[k] = []
+            results[k].append(v)
+    for k, v in results.items():
+        results[k] = np.mean(v)
+    return results
 
 
-def dirs_eval(dirs: list[str], mask_file: str, patch_file: str, model: Any, device: str = 'cpu'):
+def dirs_eval(dirs: list[str],
+              mask_file: str, patch_file: str,
+              model: Any, device: str = 'cpu') -> dict:
     """
     Evaluates every instance with `instance_eval` in a list of directory.
 
@@ -212,14 +233,19 @@ def dirs_eval(dirs: list[str], mask_file: str, patch_file: str, model: Any, devi
         matrics: A list of metric to evaluate.
 
     Returns:
-        mismatch_rate: The matching ratio from the source mask in the source
-        image to the target mask in the target image.
+        results: A dictionary of the result.
     """
-    mismatch_rates = []
-    for dir in dirs:
-        mismatch_rates.append(dir_eval(dir, mask_file, patch_file,
-                                       model, device))
-    return np.mean(mismatch_rates)
+    results = {}
+    for dir in tqdm(dirs):
+        result = dir_eval(dir, mask_file, patch_file,
+                          model, device)
+        for k, v in result.items():
+            if k not in results:
+                results[k] = []
+            results[k].append(v)
+    for k, v in results.item():
+        results[k] = np.mean(v)
+    return results
 
 
 def main(args):
@@ -231,12 +257,12 @@ def main(args):
         raise NotImplementedError
 
     if args.dirs:
-        mismatch_rate = dirs_eval(args.dirs, args.mask_file,
-                                  args.patch_file, model, args.device)
+        result = dirs_eval(args.dirs, args.mask_file,
+                           args.patch_file, model, args.device)
     else:
-        mismatch_rate = dir_eval(args.dir, args.mask_file,
-                                 args.patch_file, model, args.device)
-    print(f'Mismatch-rate: {mismatch_rate}')
+        result = dir_eval(args.dir, args.mask_file,
+                          args.patch_file, model, args.device)
+    print(result)
 
 
 if __name__ == '__main__':
