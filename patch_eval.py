@@ -151,8 +151,8 @@ def instance_eval(source_view: torch.Tensor,
                 f_count += 1
     results = {'total point': len(matches),
                'source points ratio': total / len(matches),
-               'TP': t_count / total,
-               'FP': f_count / total}
+               'TP': t_count / (total + 1e-15),
+               'FP': f_count / (total + 1e-15)}
     return results
 
 
