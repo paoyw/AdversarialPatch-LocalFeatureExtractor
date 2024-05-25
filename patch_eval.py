@@ -15,19 +15,19 @@ import homography_transforms as htfm
 from models.superpoint import SuperPointNet
 
 
-def in_convex_hull(point, hull: ConvexHull) -> bool:
+def in_convex_hull(points, hull: ConvexHull) -> bool:
     """
     Checks if the point is in the convex hull.
 
     Args:
-        point: The point to be checked.
+        point: A list of points to be checked.
         hull: The convex hull to be checked.
 
     Returns:
         Returns if the point is in the convex hull
     """
     hull = Delaunay(hull.points)
-    return hull.find_simplex(point) != -1
+    return hull.find_simplex(points) != -1
 
 
 def interpolation(point, h, w):
@@ -80,17 +80,20 @@ def fill_patch(img: torch.Tensor,
     j_start = int(mask[:, 0].min().clamp(0, w - 1))
     j_end = int(mask[:, 0].max().clamp(0, w - 1))
 
+    points = []
     for i in range(i_start, i_end + 1):
         for j in range(j_start, j_end + 1):
-            src_pt = np.array([j, i, 1], dtype=np.float32)
-            if not in_convex_hull(src_pt[:2], mask_hull):
-                continue
-            dst_pt = (H @ src_pt.T).T.squeeze()
-            dst_pt = dst_pt[:2] / dst_pt[-1:]
-            pts, weights = interpolation(dst_pt, patch_h, patch_w)
-            img[:, i, j] = 0
-            for pt, weight in zip(pts, weights):
-                img[:, i, j] += patch[:, pt[1], pt[0]] * weight
+            points.append([j, i])
+    points = np.array(points)
+    points = points[in_convex_hull(points, mask_hull)]
+    for j, i in points:
+        src_pt = np.array([j, i, 1], dtype=np.float32)
+        dst_pt = (H @ src_pt.T).T.squeeze()
+        dst_pt = dst_pt[:2] / dst_pt[-1:]
+        pts, weights = interpolation(dst_pt, patch_h, patch_w)
+        img[:, i, j] = 0
+        for pt, weight in zip(pts, weights):
+            img[:, i, j] += patch[:, pt[1], pt[0]] * weight
     return img
 
 
@@ -236,9 +239,11 @@ def dirs_eval(dirs: list[str],
         results: A dictionary of the result.
     """
     results = {}
-    for dir in tqdm(dirs):
+    pbar = tqdm(dirs, ncols=50)
+    for dir in pbar:
         result = dir_eval(dir, mask_file, patch_file,
                           model, device)
+        pbar.write(f'{dir}/{mask_file}: {result}')
         for k, v in result.items():
             if k not in results:
                 results[k] = []

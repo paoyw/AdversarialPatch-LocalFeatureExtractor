@@ -157,12 +157,13 @@ def generate_mask(dir: str,
                 target_patch[:, 1] += y
                 target_patches[i] = target_patch.tolist()
 
-    for i, _H, source_patch, target_patch in \
+    for i, genH, source_patch, target_patch in \
             zip(range(2, 7), Hs, source_patches, target_patches):
         result.append({
             'source_view': '1.ppm',
             'target_view': f'{i}.ppm',
-            'H': _H,
+            'genH': genH,
+            'H': readHomography(os.path.join(dir, f'H_1_{i}')),
             'source_patch': source_patch,
             'target_patch': target_patch,
         })
