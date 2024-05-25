@@ -80,7 +80,7 @@ def minimum_movement(rect0: torch.Tensor, rect1: torch.Tensor) -> list[int]:
             x = rect0[2][0] + 1 - rect1[0][0]
         else:
             x = rect0[1][0] - 1 - rect1[2][0]
-        
+
         if abs(rect0[2][1] + 1 - rect1[0][1]) < abs(rect0[1][1] - 1 - rect1[2][1]):
             y = rect0[2][1] + 1 - rect1[0][1]
         else:
@@ -91,6 +91,7 @@ def minimum_movement(rect0: torch.Tensor, rect1: torch.Tensor) -> list[int]:
 
 
 def generate_mask(dir: str,
+                  mask_file: str,
                   patch_width: int | float,
                   patch_height: int | float,
                   H: list | None = None,
@@ -166,7 +167,7 @@ def generate_mask(dir: str,
             'target_patch': target_patch,
         })
 
-    with open(os.path.join(dir, 'mask.json'), 'w') as f:
+    with open(os.path.join(dir, mask_file), 'w') as f:
         f.write(json.dumps(result, indent=2))
 
 
@@ -175,10 +176,12 @@ def main(args):
 
     if args.dirs:
         for dir in args.dirs:
-            generate_mask(dir, args.patch_width, args.patch_height,
+            generate_mask(dir, args.mask_file,
+                          args.patch_width, args.patch_height,
                           args.H, args.individual, args.overlapping)
     else:
-        generate_mask(args.dir, args.patch_width, args.patch_height,
+        generate_mask(args.dir, args.mask_file,
+                      args.patch_width, args.patch_height,
                       args.H, args.individual, args.overlapping)
 
 
@@ -187,6 +190,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--dirs', nargs='*')
     parser.add_argument('--dir')
+    parser.add_argument('--mask-file', default='mask.json')
     parser.add_argument('--patch-width', default=128, type=eval)
     parser.add_argument('--patch-height', default=128, type=eval)
     parser.add_argument('--H')
