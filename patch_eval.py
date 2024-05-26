@@ -248,7 +248,7 @@ def dirs_eval(dirs: list[str],
             if k not in results:
                 results[k] = []
             results[k].append(v)
-    for k, v in results.item():
+    for k, v in results.items():
         results[k] = np.mean(v)
     return results
 
