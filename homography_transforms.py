@@ -14,6 +14,6 @@ def point_transform(H: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
     """
     batch_size = points.shape[0]
     if points.shape[1] == 2:
-        points = torch.hstack((points, torch.ones(batch_size, 1)))
+        points = torch.hstack((points, torch.ones(batch_size, 1).to(H.device)))
     result = (H @ points.T).T
     return result[:, :2] / result[:, -1:]

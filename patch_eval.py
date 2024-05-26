@@ -97,6 +97,30 @@ def fill_patch(img: torch.Tensor,
     return img
 
 
+def calculateRepeatability(img1, img2, H1to2, keypoints1, keypoints2t, threshold: float = 3):
+    H2to1 = torch.linalg.inv(H1to2)
+    keypoints1t = htfm.point_transform(H1to2, keypoints1)
+    keypoints1 = keypoints1[
+        torch.where((keypoints1t[:, 0] >= 0) &
+                    (keypoints1t[:, 0] < img2.shape[-1]) &
+                    (keypoints1t[:, 1] >= 0) &
+                    (keypoints1t[:, 1] < img2.shape[-2]))
+    ]
+
+    keypoints2 = htfm.point_transform(H2to1, keypoints2t)
+    keypoints2 = keypoints2[
+        torch.where((keypoints2[:, 0] >= 0) &
+                    (keypoints2[:, 0] < img1.shape[-1]) &
+                    (keypoints2[:, 1] >= 0) &
+                    (keypoints2[:, 1] < img1.shape[-2]))
+    ]
+
+    dist = torch.square(keypoints1[:, None, :] - keypoints2[None, :, :])
+    dist = torch.sum(dist, axis=-1)
+    dist = torch.sqrt(dist)
+    return (dist < threshold).sum().cpu().item() / min(keypoints1.shape[0], keypoints2.shape[0])
+
+
 def instance_eval(source_view: torch.Tensor,
                   source_view_source_mask: torch.Tensor,
                   source_view_target_mask: torch.Tensor,
@@ -122,6 +146,12 @@ def instance_eval(source_view: torch.Tensor,
     """
     source_view = source_view.to(device).unsqueeze(dim=0)
     target_view = target_view.to(device).unsqueeze(dim=0)
+
+    source_view_source_hull = ConvexHull(source_view_source_mask)
+    source_view_target_hull = ConvexHull(source_view_target_mask)
+    target_view_source_hull = ConvexHull(target_view_source_mask)
+    target_view_target_hull = ConvexHull(target_view_target_mask)
+
     model = model.to(device)
     model.eval()
 
@@ -140,27 +170,60 @@ def instance_eval(source_view: torch.Tensor,
     matches = matcher.knnMatch(source_view_desc, target_view_desc, k=2)
     matches = sorted(matches,
                      key=lambda m: np.abs(m[0].distance - m[1].distance))
-    matches = matches[:1000]
+    matches = matches
 
-    total = 0
+    source_total = 0
+    target_total = 0
     t_count = 0
     f_count = 0
-    for m, n in matches:
-        if in_convex_hull(source_view_pt[m.queryIdx].pt, ConvexHull(source_view_source_mask)):
-            total += 1
-            if in_convex_hull(target_view_pt[m.trainIdx].pt, ConvexHull(target_view_source_mask)):
+    for m, _ in matches[:1000]:
+        if in_convex_hull(source_view_pt[m.queryIdx].pt, source_view_source_hull):
+            source_total += 1
+            if in_convex_hull(target_view_pt[m.trainIdx].pt, target_view_source_hull):
                 t_count += 1
-            if in_convex_hull(target_view_pt[m.trainIdx].pt, ConvexHull(target_view_target_mask)):
+            if in_convex_hull(target_view_pt[m.trainIdx].pt, target_view_target_hull):
                 f_count += 1
+        if in_convex_hull(source_view_pt[m.queryIdx].pt, source_view_target_hull):
+            target_total += 1
+
+    filtered_source_pt = np.float32([
+        source_view_pt[m.queryIdx].pt for m, _ in matches[:1000]
+    ])
+    filtered_target_pt = np.float32([
+        target_view_pt[m.trainIdx].pt for m, _ in matches[:1000]
+    ])
+
+    Hs2t, Hmask = cv2.findHomography(
+        filtered_source_pt, filtered_target_pt, cv2.RANSAC
+    )
+
+    try:
+        rep = calculateRepeatability(
+            source_view.squeeze(),
+            target_view.squeeze(),
+            torch.Tensor(Hs2t).to(device),
+            torch.Tensor(filtered_source_pt).to(device),
+            torch.Tensor(filtered_target_pt).to(device),
+        )
+    except:
+        rep = 0
+
     results = {'total point': len(matches),
-               'source points ratio': total / len(matches),
-               'TP': t_count / (total + 1e-15),
-               'FP': f_count / (total + 1e-15)}
+               'source total points': source_total,
+               'target total points': target_total,
+               'source points ratio': source_total / len(matches),
+               'target points ratio': target_total / len(matches),
+               't_count': t_count,
+               'f_count': f_count,
+               'TP': t_count / source_total if source_total != 0 else 0,
+               'FP': f_count / source_total if source_total != 0 else 0,
+               'repeatability': rep}
     return results
 
 
 def dir_eval(dir: str, mask_file: str, patch_file: str,
-             model: Any, device: str = 'cpu') -> dict:
+             model: Any, device: str = 'cpu',
+             null_mask: bool = False) -> dict:
     """
     Evaluates every instance with `instance_eval` in a directory.
 
@@ -170,6 +233,7 @@ def dir_eval(dir: str, mask_file: str, patch_file: str,
         patch_file: The file of the adversarial patch.
         model: The targeted local feature extractor.
         device: The computational device.
+        null_mask: Evaluate without filling the mask with the patch.
 
     Returns:
         results: A dictionary of the result.
@@ -195,15 +259,21 @@ def dir_eval(dir: str, mask_file: str, patch_file: str,
             cv2.imread(os.path.join(dir, mask_data['source_view'])))
         source_view = v2.functional.to_dtype(
             source_view, dtype=torch.float32, scale=True)
-        source_view = fill_patch(source_view, patch, source_view_source_mask)
-        source_view = fill_patch(source_view, patch, source_view_target_mask)
+        if not null_mask:
+            source_view = fill_patch(source_view, patch,
+                                     source_view_source_mask)
+            source_view = fill_patch(source_view, patch,
+                                     source_view_target_mask)
 
         target_view = v2.functional.to_image(
             cv2.imread(os.path.join(dir, mask_data['target_view'])))
         target_view = v2.functional.to_dtype(
             target_view, dtype=torch.float32, scale=True)
-        target_view = fill_patch(target_view, patch, target_view_source_mask)
-        target_view = fill_patch(target_view, patch, target_view_target_mask)
+        if not null_mask:
+            target_view = fill_patch(target_view, patch,
+                                     target_view_source_mask)
+            target_view = fill_patch(target_view, patch,
+                                     target_view_target_mask)
 
         result = instance_eval(source_view=source_view,
                                source_view_source_mask=source_view_source_mask,
@@ -222,8 +292,10 @@ def dir_eval(dir: str, mask_file: str, patch_file: str,
 
 
 def dirs_eval(dirs: list[str],
-              mask_file: str, patch_file: str,
-              model: Any, device: str = 'cpu') -> dict:
+              mask_file: str,
+              patch_file: str,
+              model: Any, device: str = 'cpu',
+              null_mask: bool = False) -> dict:
     """
     Evaluates every instance with `instance_eval` in a list of directory.
 
@@ -234,6 +306,7 @@ def dirs_eval(dirs: list[str],
         model: The targeted local feature extractor.
         device: The computational device.
         matrics: A list of metric to evaluate.
+        null_mask: Evaluate without filling the mask with the patch.
 
     Returns:
         results: A dictionary of the result.
@@ -241,8 +314,12 @@ def dirs_eval(dirs: list[str],
     results = {}
     pbar = tqdm(dirs, ncols=50)
     for dir in pbar:
-        result = dir_eval(dir, mask_file, patch_file,
-                          model, device)
+        result = dir_eval(dir=dir,
+                          mask_file=mask_file,
+                          patch_file=patch_file,
+                          model=model,
+                          device=device,
+                          null_mask=null_mask)
         pbar.write(f'{dir}/{mask_file}: {result}')
         for k, v in result.items():
             if k not in results:
@@ -262,11 +339,19 @@ def main(args):
         raise NotImplementedError
 
     if args.dirs:
-        result = dirs_eval(args.dirs, args.mask_file,
-                           args.patch_file, model, args.device)
+        result = dirs_eval(dirs=args.dirs,
+                           mask_file=args.mask_file,
+                           null_mask=args.null_mask,
+                           patch_file=args.patch_file,
+                           model=model,
+                           device=args.device)
     else:
-        result = dir_eval(args.dir, args.mask_file,
-                          args.patch_file, model, args.device)
+        result = dir_eval(dir=args.dir,
+                          mask_file=args.mask_file,
+                          null_mask=args.null_mask,
+                          patch_file=args.patch_file,
+                          model=model,
+                          device=args.device)
     print(result)
 
 
@@ -276,6 +361,7 @@ if __name__ == '__main__':
     parser.add_argument('--dirs', nargs='*')
     parser.add_argument('--dir')
     parser.add_argument('--mask-file', default='mask.json')
+    parser.add_argument('--null-mask', action='store_true')
     parser.add_argument('--patch-file', default='patch.png')
     parser.add_argument('--model', default='superpoint')
     parser.add_argument('--model-weight', default='models/superpoint_v1.pth')
