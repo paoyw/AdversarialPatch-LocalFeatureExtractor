@@ -1,9 +1,11 @@
+from argparse import ArgumentParser
+
 import torch
 import torch.nn as nn
 from torchvision.transforms import transforms
-from argparse import ArgumentParser
-from models import SuperPointNet
 from tqdm import trange
+
+from models import SuperPointNet
 
 
 def parse_args():
@@ -16,12 +18,15 @@ def parse_args():
     parser.add_argument("--alpha", type=float, default=1)
     parser.add_argument("--multiplier", type=float, default=0)
     parser.add_argument("--save", type=str, default="./patch.png")
-    parser.add_argument("--model", type=str, default="models/superpoint_v1.pth")
+    parser.add_argument("--model", type=str,
+                        default="models/superpoint_v1.pth")
     return parser.parse_args()
+
 
 transform_pil = transforms.Compose([
     transforms.ToPILImage()
 ])
+
 
 def main(args):
     # init args
@@ -60,7 +65,8 @@ def main(args):
         semi, desc = torch.squeeze(semi, 0), torch.squeeze(desc, 0)
         # 65 x ph x pw -> 65 x (ph x pw)
         # 256 x ph x pw -> 256 x (ph x pw)
-        semi, desc = torch.flatten(semi, start_dim=1), torch.flatten(desc, start_dim=1)
+        semi, desc = torch.flatten(
+            semi, start_dim=1), torch.flatten(desc, start_dim=1)
         # 65 x (ph x pw) -> (ph x pw) x 65
         semi = torch.transpose(semi, 0, 1)
         # 256 x (ph x pw) -> (ph x pw)
@@ -74,7 +80,8 @@ def main(args):
             loss_mse = loss_mse + mse_loss(embed - center, origin)
         loss_ce = ce_loss(semi, target)
 
-        tbar.set_description(desc=f'mse_loss={loss_mse.item():.3f}, ce_loss={loss_ce.item():.3f}, acc={accuracy/(pw*ph):.3f}')
+        tbar.set_description(
+            desc=f'mse_loss={loss_mse.item():.3f}, ce_loss={loss_ce.item():.3f}, acc={accuracy/(pw*ph):.3f}')
         loss = args.multiplier * loss_mse + loss_ce
         loss.backward()
 
@@ -94,7 +101,7 @@ def main(args):
     img = transform_pil(patch)
     img.save(args.save)
 
+
 if __name__ == "__main__":
     args = parse_args()
     main(args)
-

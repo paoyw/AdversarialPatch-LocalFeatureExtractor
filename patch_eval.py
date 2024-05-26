@@ -207,6 +207,7 @@ def instance_eval(source_view: torch.Tensor,
         )
     except:
         rep = 0
+        print('Rep. Error')
 
     results = {'total point': len(matches),
                'source total points': source_total,
@@ -353,6 +354,9 @@ def main(args):
                           model=model,
                           device=args.device)
     print(result)
+    result['args'] = vars(args)
+    with open(args.log, 'w') as f:
+        f.write(json.dumps(result, indent=2))
 
 
 if __name__ == '__main__':
@@ -366,5 +370,6 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='superpoint')
     parser.add_argument('--model-weight', default='models/superpoint_v1.pth')
     parser.add_argument('--device', default='cpu')
+    parser.add_argument('--log', default='log.json')
 
     main(parser.parse_args())

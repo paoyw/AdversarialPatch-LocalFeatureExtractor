@@ -45,6 +45,18 @@ def generate_rect(w, h, patch_w, patch_h, method='center') -> list[list[int]]:
             [x, y + patch_h]]
 
 
+def patch_to_rect(patch):
+    patch = torch.Tensor(patch)
+    x_min = patch[:, 0].min()
+    x_max = patch[:, 0].max()
+    y_min = patch[:, 1].min()
+    y_max = patch[:, 1].max()
+    return torch.Tensor([[x_min, y_min],
+                         [x_max, y_min],
+                         [x_max, y_max],
+                         [x_min, y_max]])
+
+
 def is_overlapping(rect0: torch.Tensor, rect1: torch.Tensor) -> bool:
     """
     Checks if two rectangles are overlapped with each other.
@@ -151,8 +163,10 @@ def generate_mask(dir: str,
                 in enumerate(zip(source_patches, target_patches)):
             source_patch = torch.Tensor(source_patch)
             target_patch = torch.Tensor(target_patch)
-            if is_overlapping(source_patch, target_patch):
-                x, y = minimum_movement(source_patch, target_patch)
+            source_rect = patch_to_rect(source_patch)
+            target_rect = patch_to_rect(target_patch)
+            if is_overlapping(source_rect, target_rect):
+                x, y = minimum_movement(source_rect, target_rect)
                 target_patch[:, 0] += x
                 target_patch[:, 1] += y
                 target_patches[i] = target_patch.tolist()
