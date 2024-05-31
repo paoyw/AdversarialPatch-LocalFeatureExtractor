@@ -20,6 +20,8 @@ def parse_args():
     parser.add_argument("--save", type=str, default="./patch.png")
     parser.add_argument("--model", type=str,
                         default="models/superpoint_v1.pth")
+    parser.add_argument("--untargeted", action="store_true")
+    parser.add_argument("--init", default="gray")
     return parser.parse_args()
 
 
@@ -35,14 +37,21 @@ def main(args):
     state_dict = torch.load(args.model)
     model.load_state_dict(state_dict)
     w, h, pw, ph = args.width, args.height, args.width // 8, args.height // 8
-    target_point = 0
+    if args.untargeted:
+        target_point = 64
+    else:
+        target_point = 0
     target = torch.ones((ph * pw), dtype=torch.long) * target_point
     origin = torch.zeros((ph * pw))
     ce_loss = nn.CrossEntropyLoss()
     mse_loss = nn.MSELoss()
 
     # random initialize
-    patch = torch.ones((h, w), requires_grad=True) * 0.5
+    if args.init == 'gray':
+        patch = torch.ones((h, w), requires_grad=True) * 0.5
+    elif args.init == 'rand':
+        patch = torch.rand((h, w), requires_grad=True)
+
     # H x W -> 1 x 1 x H x W
     patch = patch.unsqueeze(0)
     patch = patch.unsqueeze(0)
@@ -82,7 +91,10 @@ def main(args):
 
         tbar.set_description(
             desc=f'mse_loss={loss_mse.item():.3f}, ce_loss={loss_ce.item():.3f}, acc={accuracy/(pw*ph):.3f}')
+        
         loss = args.multiplier * loss_mse + loss_ce
+        if args.untargeted:
+            loss = -loss
         loss.backward()
 
         # ascent
