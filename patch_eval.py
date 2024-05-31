@@ -38,9 +38,22 @@ def interpolation(point, h, w):
     i_max = np.clip(np.ceil(point[1]), 0, h - 1)
     j_min = np.clip(np.floor(point[0]), 0, w - 1)
     j_max = np.clip(np.ceil(point[0]), 0, w - 1)
-    for i, j in itertools.product([i_min, i_max], [j_min, j_max]):
-        points.append([int(i), int(j)])
-        weights.append((1 - np.abs(j - point[0])) * (1 - np.abs(i - point[1])))
+    if i_min == i_max and j_min == j_max:
+        points.append([int(j_min), int(i_min)])
+        weights.append(1)
+    elif i_min == i_max:
+        for j in [j_min, j_max]:
+            points.append([int(j), int(i_min)])
+            weights.append((1 - np.abs(j - point[0])))
+    elif j_min == j_max:
+        for i in [i_min, i_max]:
+            points.append([int(j_min), int(i)])
+            weights.append((1 - np.abs(i - point[1])))
+    else:
+        for i, j in itertools.product([i_min, i_max], [j_min, j_max]):
+            points.append([int(j), int(i)])
+            weights.append(
+                (1 - np.abs(j - point[0])) * (1 - np.abs(i - point[1])))
     return points, weights
 
 
@@ -121,12 +134,21 @@ def calculateRepeatability(img1, img2, H1to2, keypoints1, keypoints2t, threshold
     return (dist < threshold).sum().cpu().item() / min(keypoints1.shape[0], keypoints2.shape[0])
 
 
+def evalHomographyEstimation(h, w, predH, targetH, threshold=1):
+    points = torch.Tensor([[0, 0], [0, h], [w, h], [w, 0]])
+    pred_point = htfm.point_transform(predH, points)
+    target_point = htfm.point_transform(targetH, points)
+    dist = (pred_point - target_point).norm(dim=-1)
+    return float((dist <= threshold).sum() / len(dist))
+
+
 def instance_eval(source_view: torch.Tensor,
                   source_view_source_mask: torch.Tensor,
                   source_view_target_mask: torch.Tensor,
                   target_view: torch.Tensor,
                   target_view_source_mask: torch.Tensor,
                   target_view_target_mask: torch.Tensor,
+                  H: torch.Tensor,
                   model: Any, device: str = 'cpu') -> dict:
     """
     Evaluates an instance of an adversarial patch attack for the local feature extractor.
@@ -138,6 +160,7 @@ def instance_eval(source_view: torch.Tensor,
         target_view: The image from the target view.
         target_view_source_mask: The source mask in the `target_view` image.
         target_view_target_mask: The target mask in the `target_view` image.
+        H: The ground truth of the homography.
         model: The targeted local feature extractor.
         device: The computational device.
 
@@ -196,18 +219,34 @@ def instance_eval(source_view: torch.Tensor,
     Hs2t, Hmask = cv2.findHomography(
         filtered_source_pt, filtered_target_pt, cv2.RANSAC
     )
+    Hs2t = torch.Tensor(Hs2t)
 
-    try:
+    if filtered_source_pt.shape[0] <= 0 or filtered_target_pt.shape[0] <= 0:
+        rep = 0
+    else:
         rep = calculateRepeatability(
             source_view.squeeze(),
             target_view.squeeze(),
-            torch.Tensor(Hs2t).to(device),
+            H.to(device),
             torch.Tensor(filtered_source_pt).to(device),
             torch.Tensor(filtered_target_pt).to(device),
         )
-    except:
-        rep = 0
-        print('Rep. Error')
+
+    he1 = evalHomographyEstimation(h=source_view.shape[-2],
+                                   w=source_view.shape[-1],
+                                   predH=Hs2t,
+                                   targetH=H,
+                                   threshold=1)
+    he3 = evalHomographyEstimation(h=source_view.shape[-2],
+                                   w=source_view.shape[-1],
+                                   predH=Hs2t,
+                                   targetH=H,
+                                   threshold=3)
+    he5 = evalHomographyEstimation(h=source_view.shape[-2],
+                                   w=source_view.shape[-1],
+                                   predH=Hs2t,
+                                   targetH=H,
+                                   threshold=5)
 
     results = {'total point': len(matches),
                'source total points': source_total,
@@ -218,7 +257,10 @@ def instance_eval(source_view: torch.Tensor,
                'f_count': f_count,
                'TP': t_count / source_total if source_total != 0 else 0,
                'FP': f_count / source_total if source_total != 0 else 0,
-               'repeatability': rep}
+               'repeatability': rep,
+               'homography estimation 1': he1,
+               'homography estimation 3': he3,
+               'homography estimation 5': he5, }
     return results
 
 
@@ -282,6 +324,7 @@ def dir_eval(dir: str, mask_file: str, patch_file: str,
                                target_view=target_view,
                                target_view_source_mask=target_view_source_mask,
                                target_view_target_mask=target_view_target_mask,
+                               H=H,
                                model=model, device=device)
         for k, v in result.items():
             if k not in results:
