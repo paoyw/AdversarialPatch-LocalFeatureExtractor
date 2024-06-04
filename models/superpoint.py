@@ -114,7 +114,7 @@ class SuperPointNet(torch.nn.Module):
         desc = desc.div(torch.unsqueeze(dn, 1))  # Divide by norm to normalize.
         return semi, desc
 
-    def to_cv2(self, semi, desc):
+    def to_cv2(self, img):
         """
         Converts the output of the model to the format of the cv2 input.
         Args:
@@ -125,6 +125,9 @@ class SuperPointNet(torch.nn.Module):
             keypoint: The positions of the key points.
             desc: The descriptors of the key points.
         """
+        semi, desc = self(img)
+        semi = semi.squeeze()
+        desc = desc.squeeze()
         logit = semi.argmax(dim=0)
         _pt_y, _pt_x = torch.where(logit != 64)
         pt_x = 8 * _pt_x + logit[_pt_y, _pt_x] % 8

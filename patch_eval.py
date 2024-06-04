@@ -12,7 +12,7 @@ from scipy.spatial import ConvexHull, Delaunay
 from tqdm import tqdm
 
 import homography_transforms as htfm
-from models.superpoint import SuperPointNet
+from models import SuperPointNet, SIFT
 
 
 def in_convex_hull(points, hull: ConvexHull) -> bool:
@@ -179,16 +179,10 @@ def instance_eval(source_view: torch.Tensor,
     model.eval()
 
     with torch.no_grad():
-        source_view_semi, source_view_desc = model(
+        source_view_pt, source_view_desc = model.to_cv2(
             v2.functional.rgb_to_grayscale(source_view))
-        target_view_semi, target_view_desc = model(
+        target_view_pt, target_view_desc = model.to_cv2(
             v2.functional.rgb_to_grayscale(target_view))
-    source_view_pt, source_view_desc = model.to_cv2(
-        source_view_semi.squeeze(), source_view_desc.squeeze()
-    )
-    target_view_pt, target_view_desc = model.to_cv2(
-        target_view_semi.squeeze(), target_view_desc.squeeze()
-    )
     matcher = cv2.BFMatcher()
     matches = matcher.knnMatch(source_view_desc, target_view_desc, k=2)
     matches = sorted(matches,
@@ -379,6 +373,8 @@ def main(args):
         model = SuperPointNet()
         state_dict = torch.load('models/superpoint_v1.pth')
         model.load_state_dict(state_dict)
+    elif args.model == 'sift':
+        model = SIFT()
     else:
         raise NotImplementedError
 
