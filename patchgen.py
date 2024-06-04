@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 
 import torch
 import torch.nn as nn
+import torchvision
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms import v2
 from tqdm import trange
@@ -24,6 +25,7 @@ def parse_args():
                         default="models/superpoint_v1.pth")
     parser.add_argument("--untargeted", action="store_true")
     parser.add_argument("--init", default="gray")
+    parser.add_argument("--init-pattern")
     parser.add_argument("--prob", type=float, default=0.5)
     return parser.parse_args()
 
@@ -46,11 +48,13 @@ def random_aug(img, args):
         v2.RandomResizedCrop(size=(args.height, args.width), scale=(0.25, 1)),
     ])
 
+    resize = v2.RandomResize(min_size=args.width // 2, max_size=2 * args.width)
+
     flip = v2.Compose([
         v2.RandomHorizontalFlip(p=1),
     ])
 
-    augmentations = [rotate, crop, flip]
+    augmentations = [crop, resize, flip]
     augmentation = v2.RandomChoice(augmentations)
     return augmentation(img)
 
@@ -72,7 +76,12 @@ def main(args):
     mse_loss = nn.MSELoss()
 
     # random initialize
-    if args.init == 'gray':
+    if args.init_pattern:
+        # TODO
+        patch = torchvision.io.read_image(args.init_pattern,
+                                          torchvision.io.ImageReadMode.GRAY).to(torch.float32)
+        patch = (patch / 255).squeeze()
+    elif args.init == 'gray':
         patch = torch.ones((h, w), requires_grad=True) * 0.5
     elif args.init == 'rand':
         patch = torch.rand((h, w), requires_grad=True)
@@ -107,8 +116,15 @@ def main(args):
         # 256 x (ph x pw) -> (ph x pw)
         center = desc.mean(dim=0)
 
+        if args.untargeted:
+            target_point = 64
+        else:
+            target_point = 0
+        target = torch.ones(semi.shape[:-1], dtype=torch.long) * target_point
+        origin = torch.zeros_like(desc[0])
+
         # loss and accuracy
-        accuracy = (semi.argmax(dim=-1) == target_point).sum()
+        accuracy = (semi.argmax(dim=-1) == target_point).sum() / semi.shape[0]
 
         loss_mse, loss_ce = 0, 0
         for embed in desc:
@@ -116,8 +132,8 @@ def main(args):
         loss_ce = ce_loss(semi, target)
 
         tbar.set_description(
-            desc=f'mse_loss={loss_mse.item():.3f}, ce_loss={loss_ce.item():.3f}, acc={accuracy/(pw*ph):.3f}')
-        
+            desc=f'mse_loss={loss_mse.item():.3f}, ce_loss={loss_ce.item():.3f}, acc={accuracy:.3f}')
+
         loss = args.multiplier * loss_mse + loss_ce
         if args.untargeted:
             loss = -loss
