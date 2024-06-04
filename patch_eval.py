@@ -149,7 +149,8 @@ def instance_eval(source_view: torch.Tensor,
                   target_view_source_mask: torch.Tensor,
                   target_view_target_mask: torch.Tensor,
                   H: torch.Tensor,
-                  model: Any, device: str = 'cpu') -> dict:
+                  model: Any, device: str = 'cpu',
+                  match_point_num: int = 1000,) -> dict:
     """
     Evaluates an instance of an adversarial patch attack for the local feature extractor.
 
@@ -204,10 +205,10 @@ def instance_eval(source_view: torch.Tensor,
             target_total += 1
 
     filtered_source_pt = np.float32([
-        source_view_pt[m.queryIdx].pt for m, _ in matches[:1000]
+        source_view_pt[m.queryIdx].pt for m, _ in matches[:match_point_num]
     ])
     filtered_target_pt = np.float32([
-        target_view_pt[m.trainIdx].pt for m, _ in matches[:1000]
+        target_view_pt[m.trainIdx].pt for m, _ in matches[:match_point_num]
     ])
 
     Hs2t, Hmask = cv2.findHomography(
@@ -260,7 +261,8 @@ def instance_eval(source_view: torch.Tensor,
 
 def dir_eval(dir: str, mask_file: str, patch_file: str,
              model: Any, device: str = 'cpu',
-             null_mask: bool = False) -> dict:
+             null_mask: bool = False,
+             match_point_num: int = 1000,) -> dict:
     """
     Evaluates every instance with `instance_eval` in a directory.
 
@@ -319,7 +321,8 @@ def dir_eval(dir: str, mask_file: str, patch_file: str,
                                target_view_source_mask=target_view_source_mask,
                                target_view_target_mask=target_view_target_mask,
                                H=H,
-                               model=model, device=device)
+                               model=model, device=device,
+                               match_point_num=match_point_num)
         for k, v in result.items():
             if k not in results:
                 results[k] = []
@@ -333,7 +336,8 @@ def dirs_eval(dirs: list[str],
               mask_file: str,
               patch_file: str,
               model: Any, device: str = 'cpu',
-              null_mask: bool = False) -> dict:
+              null_mask: bool = False,
+              match_point_num: int = 1000,) -> dict:
     """
     Evaluates every instance with `instance_eval` in a list of directory.
 
@@ -357,7 +361,8 @@ def dirs_eval(dirs: list[str],
                           patch_file=patch_file,
                           model=model,
                           device=device,
-                          null_mask=null_mask)
+                          null_mask=null_mask,
+                          match_point_num=match_point_num,)
         pbar.write(f'{dir}/{mask_file}: {result}')
         for k, v in result.items():
             if k not in results:
@@ -384,14 +389,16 @@ def main(args):
                            null_mask=args.null_mask,
                            patch_file=args.patch_file,
                            model=model,
-                           device=args.device)
+                           device=args.device,
+                           match_point_num=args.match_point_num,)
     else:
         result = dir_eval(dir=args.dir,
                           mask_file=args.mask_file,
                           null_mask=args.null_mask,
                           patch_file=args.patch_file,
                           model=model,
-                          device=args.device)
+                          device=args.device,
+                          match_point_num=args.match_point_num,)
     print(result)
     result['args'] = vars(args)
     with open(args.log, 'w') as f:
@@ -405,6 +412,7 @@ if __name__ == '__main__':
     parser.add_argument('--dir')
     parser.add_argument('--mask-file', default='mask.json')
     parser.add_argument('--null-mask', action='store_true')
+    parser.add_argument('--match-point-num', default=1000, type=int)
     parser.add_argument('--patch-file', default='patch.png')
     parser.add_argument('--model', default='superpoint')
     parser.add_argument('--model-weight', default='models/superpoint_v1.pth')
