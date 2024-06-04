@@ -2,10 +2,12 @@ from argparse import ArgumentParser
 
 import torch
 import torch.nn as nn
-from torchvision.transforms import transforms
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms import v2
 from tqdm import trange
 
 from models import SuperPointNet
+from random import random
 
 
 def parse_args():
@@ -22,12 +24,35 @@ def parse_args():
                         default="models/superpoint_v1.pth")
     parser.add_argument("--untargeted", action="store_true")
     parser.add_argument("--init", default="gray")
+    parser.add_argument("--prob", type=float, default=0.5)
     return parser.parse_args()
 
 
-transform_pil = transforms.Compose([
-    transforms.ToPILImage()
+transform_pil = v2.Compose([
+    v2.ToPILImage()
 ])
+
+
+def random_aug(img, args):
+    if random() > args.prob:
+        return img
+
+    rotate = v2.Compose([
+        v2.RandomRotation(180, InterpolationMode.BILINEAR),
+        v2.RandomCrop(size=(args.height, args.width)),
+    ])
+
+    crop = v2.Compose([
+        v2.RandomResizedCrop(size=(args.height, args.width), scale=(0.25, 1)),
+    ])
+
+    flip = v2.Compose([
+        v2.RandomHorizontalFlip(p=1),
+    ])
+
+    augmentations = [rotate, crop, flip]
+    augmentation = v2.RandomChoice(augmentations)
+    return augmentation(img)
 
 
 def main(args):
@@ -65,10 +90,11 @@ def main(args):
     for _ in tbar:
         patch = patch.detach().clone().to(device)
         patch.requires_grad = True
+        sub_patch = random_aug(patch, args)
         model.eval()
 
         # 1 x 65 x ph x pw, 1 x 256 x ph x pw
-        semi, desc = model(patch)
+        semi, desc = model(sub_patch)
         # 1 x 65 x ph x pw -> 65 x ph x pw
         # 1 x 256 x ph x pw -> 256 x ph x pw
         semi, desc = torch.squeeze(semi, 0), torch.squeeze(desc, 0)
