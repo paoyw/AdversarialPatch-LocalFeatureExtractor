@@ -194,7 +194,7 @@ def instance_eval(source_view: torch.Tensor,
     target_total = 0
     t_count = 0
     f_count = 0
-    for m, _ in matches[:1000]:
+    for m, _ in matches[:match_point_num]:
         if in_convex_hull(source_view_pt[m.queryIdx].pt, source_view_source_hull):
             source_total += 1
             if in_convex_hull(target_view_pt[m.trainIdx].pt, target_view_source_hull):
