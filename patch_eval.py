@@ -211,6 +211,9 @@ def instance_eval(source_view: torch.Tensor,
         target_view_pt[m.trainIdx].pt for m, _ in matches[:match_point_num]
     ])
 
+    if filtered_source_pt.shape[0] == 0 or filtered_target_pt.shape[0] == 0:
+        return {}
+
     Hs2t, Hmask = cv2.findHomography(
         filtered_source_pt, filtered_target_pt, cv2.RANSAC
     )

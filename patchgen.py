@@ -121,6 +121,7 @@ def main(args):
         else:
             target_point = 0
         target = torch.ones(semi.shape[:-1], dtype=torch.long) * target_point
+        target = target.to(device)
         origin = torch.zeros_like(desc[0])
 
         # loss and accuracy
