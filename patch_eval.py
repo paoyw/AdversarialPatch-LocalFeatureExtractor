@@ -188,7 +188,6 @@ def instance_eval(source_view: torch.Tensor,
     matches = matcher.knnMatch(source_view_desc, target_view_desc, k=2)
     matches = sorted(matches,
                      key=lambda m: np.abs(m[0].distance - m[1].distance))
-    matches = matches
 
     source_total = 0
     target_total = 0

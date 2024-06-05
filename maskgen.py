@@ -72,6 +72,10 @@ def is_overlapping(rect0: torch.Tensor, rect1: torch.Tensor) -> bool:
         if p[0] >= rect0[0][0] and p[0] <= rect0[2][0] and \
                 p[1] >= rect0[0][1] and p[1] <= rect0[2][1]:
             return True
+    for p in rect0:
+        if p[0] >= rect1[0][0] and p[0] <= rect1[2][0] and \
+                p[1] >= rect1[0][1] and p[1] <= rect1[2][1]:
+            return True
     return False
 
 
