@@ -14,13 +14,17 @@ pip intsall -r requirements.txt
 .
 ├── data
 │   └── hpatches-sequences-release/
-├── eval
-│   ├── __init__.py
-│   └── utils.py
+├── homography_transforms.py
 ├── models
 │   ├── __init__.py
+│   ├── sift.py
 │   ├── superpoint.py
 │   └── superpoint_v1.pth
+├── patches
+│   ├── chessboard_100.png
+│   └── ...
+├── patch_eval.py
+├── patchgen.py
 ├── README.md
 └── requirements.txt
 ```
