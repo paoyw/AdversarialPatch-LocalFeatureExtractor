@@ -10,6 +10,13 @@ pip intsall -r requirements.txt
 
 
 ## Patch generation
+### Chessboard pattern
+```bash
+python3 chessboard.py [-h] [--rect_width RECT_WIDTH] [--rect_height RECT_HEIGHT]
+                      [--width WIDTH] [--height HEIGHT] [--save SAVE]
+```
+
+### Adversarial patch
 ```bash
 python3 patchgen.py [-h] [--cuda] [--epoch EPOCH] [--width WIDTH]
                     [--height HEIGHT] [--decay DECAY] [--alpha ALPHA]
@@ -36,6 +43,7 @@ python3 patch_eval.py [-h] [--dirs [DIRS ...]] [--dir DIR] [--mask-file MASK_FIL
 ## Folder structure
 ```
 .
+├── chessboard.py
 ├── data
 │   └── hpatches-sequences-release/
 ├── homography_transforms.py
