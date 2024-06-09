@@ -9,6 +9,30 @@ pip intsall -r requirements.txt
 - Download from data hpatches-sequences-release.tar.gz from [HPatches](icvl.ee.ic.ac.uk/vbalnt/hpatches/)
 
 
+## Patch generation
+```bash
+python3 patchgen.py [-h] [--cuda] [--epoch EPOCH] [--width WIDTH]
+                    [--height HEIGHT] [--decay DECAY] [--alpha ALPHA]
+                    [--multiplier MULTIPLIER] [--save SAVE] [--model MODEL]
+                    [--untargeted] [--init INIT] [--init-pattern INIT_PATTERN]
+                    [--prob PROB]
+```
+
+## Mask generation
+```bash
+python3 maskgen.py [-h] [--dirs [DIRS ...]] [--dir DIR] [--mask-file MASK_FILE]
+                   [--patch-width PATCH_WIDTH] [--patch-height PATCH_HEIGHT]
+                   [--H H] [--individual] [--overlapping]
+```
+
+## Evaluate the attack
+```bash
+python3 patch_eval.py [-h] [--dirs [DIRS ...]] [--dir DIR] [--mask-file MASK_FILE]
+                      [--null-mask] [--match-point-num MATCH_POINT_NUM]
+                      [--patch-file PATCH_FILE] [--model MODEL] [--model-weight MODEL_WEIGHT]
+                      [--device DEVICE] [--log LOG]
+```
+
 ## Folder structure
 ```
 .
