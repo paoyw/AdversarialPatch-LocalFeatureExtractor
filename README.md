@@ -1,5 +1,7 @@
 # Adversarial Patch for 3D Local Feature Extractor
 
+[![slide](https://img.shields.io/badge/google%20slide-presentation-ffba00.svg)](https://docs.google.com/presentation/d/e/2PACX-1vS7ybtX8od70jtzw3ggknzAB1CgHYkvqZMPKGhsuv28gr09hEmzewgKnIQqAbeo0bbzmNFzq7isCqb4/pub?start=false&loop=false&delayms=3000)
+
 ## Install packages
 ```
 pip intsall -r requirements.txt
