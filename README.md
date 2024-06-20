@@ -10,8 +10,9 @@ pip intsall -r requirements.txt
 ```
 
 ## Prepare data
-- Download from data hpatches-sequences-release.tar.gz from [HPatches](icvl.ee.ic.ac.uk/vbalnt/hpatches/)
+- Download the data with the mask annotations from [data.tar.gz](https://drive.google.com/file/d/1vR04XRnptLyJtYn8KbPd7KhKadKeSQzX/view?usp=drive_link)
 
+- Or download the original HPatches data from data hpatches-sequences-release.tar.gz from [HPatches](icvl.ee.ic.ac.uk/vbalnt/hpatches/), and generate your own mask by `maskgen.py`.
 
 ## Patch generation
 ### Chessboard pattern
@@ -42,6 +43,26 @@ python3 patch_eval.py [-h] [--dirs [DIRS ...]] [--dir DIR] [--mask-file MASK_FIL
                       [--null-mask] [--match-point-num MATCH_POINT_NUM]
                       [--patch-file PATCH_FILE] [--model MODEL] [--model-weight MODEL_WEIGHT]
                       [--device DEVICE] [--log LOG]
+```
+eg.
+- Evaluates the chess-init with size 128 while attacking the targeted viewpoints using masking size 128.
+```bash
+python3 patch_eval.py \
+    --dirs data/hpatches-mask/* \
+    --mask-file mask_indiv_128.json \
+    --patch-file patches/patch_chess_w128_h128.png \
+    --device cuda \
+    --log log/
+```
+- Evaluates the chessboard pattern with size 100 while attacking the untargeted viewpoints using masking size 128 and the model is SIFT.
+```bash
+python3 patch_eval.py \
+    --dirs data/hpatches-mask/* \
+    --mask-file mask_128.json \
+    --patch-file patches/chessboard_128.png \
+    --model sift \
+    --device cuda \
+    --log log/
 ```
 
 ## Folder structure
