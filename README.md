@@ -70,8 +70,12 @@ python3 patch_eval.py \
 .
 ├── chessboard.py
 ├── data
-│   └── hpatches-sequences-release/
+│   └── hpatches-mask
+│       ├── v_abstract/
+│       └── ...
 ├── homography_transforms.py
+├── LICENSE
+├── maskgen.py
 ├── models
 │   ├── __init__.py
 │   ├── sift.py
@@ -83,5 +87,6 @@ python3 patch_eval.py \
 ├── patch_eval.py
 ├── patchgen.py
 ├── README.md
+├── report.pdf
 └── requirements.txt
 ```
