@@ -65,6 +65,14 @@ python3 patch_eval.py \
     --log log/
 ```
 
+## Visual results of physical attacks
+
+The green point is the points in other viewpoint that match with the points in the source mask of the source viewpoint.
+
+![Mismatch 0](./assets/mismatch-0.gif)
+
+![Mismatch 1](./assets/mismatch-1.gif)
+
 ## Folder structure
 ```
 .
